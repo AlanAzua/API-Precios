@@ -1,0 +1,87 @@
+FROM centos:7
+
+RUN yum update -y && \
+    yum install -y epel-release
+
+RUN yum install -y http://rpms.remirepo.net/enterprise/remi-release-7.rpm && \
+    yum install -y yum-utils wget unzip zip && \
+    yum-config-manager --enable remi-php80 && \
+    yum -y update
+
+RUN yum -y update && yum install -y php-fpm \
+    php-zip \
+    php-xml \
+    php-cli \
+    php-bcmath \
+    php-dba \
+    php-gd \
+    php-intl \
+    php-mbstring \
+    php-mysql \
+    php-pdo \
+    php-soap\
+    php-pecl-apcu \
+    php-pecl-imagick \
+    php-oci8 \
+    php-pear \
+    php-devel \
+    php-ldap
+
+
+RUN useradd -M -d /opt/app -s /bin/false nginx
+
+RUN mkdir -p /run/php-fpm && \
+    chown nginx:nginx /run/php-fpm
+
+RUN mkdir -p /var/lib/php/session && \
+    chown nginx:nginx /var/lib/php/session
+
+RUN curl -sS https://getcomposer.org/installer | php &&\
+    mv composer.phar /usr/local/bin/ &&\
+    ln -s /usr/local/bin/composer.phar /usr/local/bin/composer
+
+RUN wget -P /tmp https://download.oracle.com/otn_software/linux/instantclient/211000/oracle-instantclient-basic-21.1.0.0.0-1.x86_64.rpm && \
+    wget -P /tmp https://download.oracle.com/otn_software/linux/instantclient/211000/oracle-instantclient-devel-21.1.0.0.0-1.x86_64.rpm
+
+RUN yum install -y /tmp/oracle-instantclient-basic-21.1.0.0.0-1.x86_64.rpm && \
+    yum install -y /tmp/oracle-instantclient-devel-21.1.0.0.0-1.x86_64.rpm
+
+RUN sh -c "echo /usr/lib/oracle/21/client64/lib > /etc/ld.so.conf.d/oracle-instantclient.conf" && ldconfig
+
+RUN curl https://packages.microsoft.com/config/rhel/7/prod.repo > /etc/yum.repos.d/mssql-release.repo && \
+     yum remove unixODBC-utf16 unixODBC-utf16-devel && \
+     ACCEPT_EULA=Y yum install -y msodbcsql17 && \
+     yum install -y unixODBC-devel
+
+RUN echo 'export PATH="$PATH:/opt/mssql-tools/bin"' >> ~/.bashrc && \
+    source ~/.bashrc
+
+RUN pecl install sqlsrv
+RUN pecl install pdo_sqlsrv
+
+RUN echo extension=pdo_sqlsrv.so >> `php --ini | grep "Scan for additional .ini files" | sed -e "s|.*:\s*||"`/30-pdo_sqlsrv.ini && \
+    echo extension=sqlsrv.so >> `php --ini | grep "Scan for additional .ini files" | sed -e "s|.*:\s*||"`/20-sqlsrv.ini
+
+RUN pecl install mongodb
+RUN echo extension=mongodb.so >> `php --ini | grep "Scan for additional .ini files" | sed -e "s|.*:\s*||"`/30-mongodb.ini
+
+RUN curl -sL https://rpm.nodesource.com/setup_14.x | bash -
+RUN yum install -y nodejs
+
+RUN yum clean all
+
+RUN sed -e 's/127.0.0.1:9000/9000/' \
+        -e '/allowed_clients/d' \
+        -e '/catch_workers_output/s/^;//' \
+        -e '/error_log/d' \
+        -i /etc/php-fpm.d/www.conf
+
+RUN sed -E -i -e 's/max_execution_time = 30/max_execution_time = -1/' /etc/php.ini \
+     && sed -E -i -e 's/memory_limit = 128M/memory_limit = -1/' /etc/php.ini \
+     && sed -E -i -e 's/post_max_size = 8M/post_max_size = -1/' /etc/php.ini \
+     && sed -E -i -e 's/upload_max_filesize = 2M/upload_max_filesize = -1/' /etc/php.ini
+
+RUN mkdir -p /opt/app-root/src/
+WORKDIR /opt/app-root/src/
+
+CMD /usr/sbin/php-fpm --nodaemonize

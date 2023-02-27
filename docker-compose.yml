@@ -1,0 +1,28 @@
+version: "2.2"
+
+services:
+  app:
+    container_name: php-fpm-api-precios-prod
+    build:
+      context: ./
+      dockerfile: docker/php/dockerfile
+    volumes:
+      -   ./:/opt/app-root/src
+    ports:
+      - 9000:9000
+    networks:
+      - app
+  nginx:
+    container_name: nginx-api-precios-prod
+    build:
+      context: ./
+      dockerfile: docker/nginx/dockerfile
+    volumes:
+      -   ./:/opt/app-root/src
+    ports:
+      - 8080:80
+    networks:
+      - app
+networks:
+  app:
+    driver: "bridge"
